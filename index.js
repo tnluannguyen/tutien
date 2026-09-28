@@ -36,8 +36,11 @@ async function ensureAuth() {
     const password = process.env.TUTIENHOI_PASSWORD;
 
     if (!username || !password) {
+        console.error("Loi: Thieu bien moi truong TUTIENHOI_USERNAME hoac TUTIENHOI_PASSWORD");
         throw new Error("Missing credentials");
     }
+
+    console.log("Dang tien hanh dang nhap voi user:", username);
 
     const response = await fetch("https://tutienhoi.vercel.app/api/login", {
         method: "POST",
@@ -45,10 +48,17 @@ async function ensureAuth() {
         body: JSON.stringify({ username, password })
     });
 
+    if (!response.ok) {
+        console.error("Loi dang nhap, HTTP status:", response.status);
+    }
+
     const setCookieHeader = response.headers.get("set-cookie");
     if (setCookieHeader) {
         currentCookie = setCookieHeader.split(";")[0];
         lastLoginTime = now;
+        console.log("Dang nhap thanh cong, da lay duoc Cookie.");
+    } else {
+        console.error("Khong tim thay header set-cookie trong response dang nhap.");
     }
     return currentCookie;
 }
@@ -59,12 +69,20 @@ async function getCatalogData() {
         return catalogCache;
     }
     const cookie = await ensureAuth();
+    
+    console.log("Dang lay du lieu catalog tu server...");
     const response = await fetch("https://tutienhoi.vercel.app/api/catalog", {
         headers: { "Cookie": cookie }
     });
+    
+    if (!response.ok) {
+        console.error("Loi lay catalog, HTTP status:", response.status);
+    }
+    
     const data = await response.json();
     catalogCache = data.movies || [];
     catalogCacheTime = now;
+    console.log("Da lay thanh cong", catalogCache.length, "phim.");
     return catalogCache;
 }
 
@@ -84,6 +102,7 @@ builder.defineCatalogHandler(async ({ type, id }) => {
         }));
         return { metas };
     } catch (error) {
+        console.error("Loi trong defineCatalogHandler:", error);
         return { metas: [] };
     }
 });
@@ -98,6 +117,7 @@ builder.defineMetaHandler(async ({ type, id }) => {
         const movie = movies.find(m => m.id === movieId);
         
         if (!movie) {
+            console.error("Khong tim thay phim voi ID:", movieId);
             return { meta: {} };
         }
 
@@ -121,6 +141,7 @@ builder.defineMetaHandler(async ({ type, id }) => {
             }
         };
     } catch (error) {
+        console.error("Loi trong defineMetaHandler:", error);
         return { meta: {} };
     }
 });
@@ -137,6 +158,8 @@ builder.defineStreamHandler(async ({ type, id }) => {
         const episodeId = parseInt(parts[1]);
 
         const cookie = await ensureAuth();
+        console.log("Dang lay link stream cho episodeId:", episodeId);
+        
         const response = await fetch("https://tutienhoi.vercel.app/api/play", {
             method: "POST",
             headers: {
@@ -145,9 +168,15 @@ builder.defineStreamHandler(async ({ type, id }) => {
             },
             body: JSON.stringify({ episodeId })
         });
+        
+        if (!response.ok) {
+            console.error("Loi lay stream, HTTP status:", response.status);
+        }
+        
         const data = await response.json();
 
         if (data.source) {
+            console.log("Da lay duoc link stream thanh cong.");
             return {
                 streams: [{
                     url: data.source,
@@ -155,8 +184,10 @@ builder.defineStreamHandler(async ({ type, id }) => {
                 }]
             };
         }
+        console.error("Khong co truong source trong response stream.");
         return { streams: [] };
     } catch (error) {
+        console.error("Loi trong defineStreamHandler:", error);
         return { streams: [] };
     }
 });
